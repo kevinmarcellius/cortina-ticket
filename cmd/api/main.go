@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"time"
 
 	"github.com/kevinmarcellius/cortina-ticket/config"
 	"github.com/kevinmarcellius/cortina-ticket/internal/handler"
@@ -32,9 +36,23 @@ func main() {
 	e.GET("/health/ready", healthHandler.Ready)
 
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	go func() {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		if err := e.Start(fmt.Sprintf(":%s", port)); err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal("shutting down the server")
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server with a timeout of 10 seconds.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Fatal(err)
 	}
-	e.Logger.Fatal(e.Start(fmt.Sprintf(":%s", port)))
 }
