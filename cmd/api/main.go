@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/kevinmarcellius/cortina-ticket/config"
@@ -47,12 +48,21 @@ func main() {
 	}()
 
 	// Wait for interrupt signal to gracefully shutdown the server with a timeout of 10 seconds.
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
-	<-quit
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := e.Shutdown(ctx); err != nil {
-		e.Logger.Fatal(err)
-	}
+	 quit := make(chan os.Signal, 1)
+    signal.Notify(quit, os.Interrupt) // SIGINT (Ctrl+C)
+    signal.Notify(quit, syscall.SIGTERM) // SIGTERM (Kubernetes)
+    <-quit // This blocks the main goroutine until a signal is received
+
+    fmt.Println("Shutting down server...")
+
+    // 3. Create a context with a timeout for the shutdown
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    // 4. Attempt graceful shutdown
+    if err := e.Shutdown(ctx); err != nil {
+        log.Fatal("Server forced to shutdown:", err)
+    }
+
+    fmt.Println("Server exiting")
 }
